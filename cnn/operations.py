@@ -116,22 +116,22 @@ class SkipSepConv(nn.Module):
   def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
     super(SkipSepConv, self).__init__()
     self.bn = nn.BatchNorm2d(C_out,affine=affine)
-    self.identify = Identity()
+    self.identity = Identity()
     self.sepConv = SepConv(C_in, C_out, kernel_size, stride, padding, affine)
 
   def forward(self, x):
-    return self.bn(self.identify(x) + self.sepConv(x))
+    return self.bn(self.identity(x) + self.sepConv(x))
 
 class SkipDilatedConv(nn.Module):
 
   def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
     super(SkipDilatedConv, self).__init__()
     self.bn = nn.BatchNorm2d(C_out, affine=affine)
-    self.identify = Identity()
+    self.identity = Identity()
     self.dilConv = DilConv(C_in, C_out, kernel_size, stride, padding, dilation, affine)
 
   def forward(self, x):
-    return self.bn(self.identify(x) + self.dilConv(x))
+    return self.bn(self.identity(x) + self.dilConv(x))
 
 class SkipSpatialConv(nn.Module):
   def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
@@ -140,11 +140,11 @@ class SkipSpatialConv(nn.Module):
     self.spatial_conv = nn.Sequential(
       nn.ReLU(inplace=False),
       nn.Conv2d(C_in, C_in, (1, kernel_size), stride=(1, stride), padding=(0, padding), bias=False),
-      nn.Conv2d(C_in, C_out, (kernel_size, 1), stride=(stride, 1), padding=(3, padding), bias=False),
+      nn.Conv2d(C_in, C_out, (kernel_size, 1), stride=(stride, 1), padding=(padding, 0), bias=False),
       nn.BatchNorm2d(C_out, affine=affine)
     )
-    self.identfy = Identity()
+    self.identity = Identity()
 
-  def forward(self,x):
-    return self.bn(self.identfy(x) + self.spatial_conv(x))
+  def forward(self, x):
+    return self.bn(self.identity(x) + self.spatial_conv(x))
 
