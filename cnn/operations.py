@@ -5,18 +5,26 @@ OPS = {
   'none' : lambda C, stride, affine: Zero(stride),
   'avg_pool_3x3' : lambda C, stride, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
   'max_pool_3x3' : lambda C, stride, affine: nn.MaxPool2d(3, stride=stride, padding=1),
-  'skip_connect' : lambda C, stride, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
-  'sep_conv_3x3' : lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
-  'sep_conv_5x5' : lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
-  'sep_conv_7x7' : lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
-  'dil_conv_3x3' : lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine),
-  'dil_conv_5x5' : lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine),
-  'conv_7x1_1x7' : lambda C, stride, affine: nn.Sequential(
-    nn.ReLU(inplace=False),
-    nn.Conv2d(C, C, (1,7), stride=(1, stride), padding=(0, 3), bias=False),
-    nn.Conv2d(C, C, (7,1), stride=(stride, 1), padding=(3, 0), bias=False),
-    nn.BatchNorm2d(C, affine=affine)
-    ),
+  # 'skip_connect' : lambda C, stride, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
+  # 'sep_conv_3x3' : lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
+  # 'sep_conv_5x5' : lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
+  # 'sep_conv_7x7' : lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
+  # 'dil_conv_3x3' : lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine),
+  # 'dil_conv_5x5' : lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine),
+  # 'conv_7x1_1x7' : lambda C, stride, affine: nn.Sequential(
+  #   nn.ReLU(inplace=False),
+  #   nn.Conv2d(C, C, (1,7), stride=(1, stride), padding=(0, 3), bias=False),
+  #   nn.Conv2d(C, C, (7,1), stride=(stride, 1), padding=(3, 0), bias=False),
+  #   nn.BatchNorm2d(C, affine=affine)
+  #   ),
+  'skip_sep_conv_3x3' : lambda C, stride, affine: SkipSepConv(C_in=C, C_out=C, kernel_size=3, stride=stride, padding=1, affine=affine),
+  'skip_sep_conv_5x5' : lambda C, stride, affine: SkipSepConv(C_in=C, C_out=C, kernel_size=5, stride=stride, padding=2, affine=affine),
+  'skip_sep_conv_7x7' : lambda C, stride, affine: SkipSepConv(C_in=C, C_out=C, kernel_size=7, stride=stride, padding=3, affine=affine),
+  'skip_dil_conv_3x3' : lambda C, stride, affine: SkipDilatedConv(C_in=C, C_out=C, kernel_size=3, stride=stride, padding=2, dilation=2, affine=affine),
+  'skip_dil_conv_5x5' : lambda C, stride, affine: SkipDilatedConv(C_in=C, C_out=C, kernel_size=5, stride=stride, padding=4, dilation=2, affine=affine),
+  'skip_spat_conv_7x7' : lambda C, stride, affine: SkipSpatialConv(C_in=C, C_out=C, kernel_size=7, stride=stride, padding=3, affine=affine),
+  'skip_spat_conv_5x5' : lambda C, stride, affine: SkipSpatialConv(C_in=C, C_out=C, kernel_size=5, stride=stride, padding=2, affine=affine),
+
 }
 
 class ReLUConvBN(nn.Module):
@@ -103,13 +111,40 @@ class FactorizedReduce(nn.Module):
     out = self.bn(out)
     return out
 
-class SkipSepConv3x3(nn.Module):
+class SkipSepConv(nn.Module):
+
   def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
-    super(SkipSepConv3x3, self).__init__()
+    super(SkipSepConv, self).__init__()
     self.bn = nn.BatchNorm2d(C_out,affine=affine)
     self.identify = Identity()
-    self.sepConv3x3 = SepConv(C_in, C_out, kernel_size, stride, padding, affine)
+    self.sepConv = SepConv(C_in, C_out, kernel_size, stride, padding, affine)
 
   def forward(self, x):
-    return self.bn(self.identify(x) + self.sepConv3x3(x))
+    return self.bn(self.identify(x) + self.sepConv(x))
+
+class SkipDilatedConv(nn.Module):
+
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
+    super(SkipDilatedConv, self).__init__()
+    self.bn = nn.BatchNorm2d(C_out, affine=affine)
+    self.identify = Identity()
+    self.dilConv = DilConv(C_in, C_out, kernel_size, stride, padding, dilation, affine)
+
+  def forward(self, x):
+    return self.bn(self.identify(x) + self.dilConv(x))
+
+class SkipSpatialConv(nn.Module):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
+    super(SkipSpatialConv,self).__init__()
+    self.bn = nn.BatchNorm2d(C_out, affine=affine)
+    self.spatial_conv = nn.Sequential(
+      nn.ReLU(inplace=False),
+      nn.Conv2d(C_in, C_in, (1, kernel_size), stride=(1, stride), padding=(0, padding), bias=False),
+      nn.Conv2d(C_in, C_out, (kernel_size, 1), stride=(stride, 1), padding=(3, padding), bias=False),
+      nn.BatchNorm2d(C_out, affine=affine)
+    )
+    self.identfy = Identity()
+
+  def forward(self,x):
+    return self.bn(self.identfy(x) + self.spatial_conv(x))
 
